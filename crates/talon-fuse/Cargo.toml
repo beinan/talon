@@ -1,0 +1,48 @@
+[package]
+name = "talon-fuse"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "FUSE filesystem client exposing the Talon cache as a mountable POSIX filesystem"
+
+[[bin]]
+name = "talon-fuse"
+path = "src/main.rs"
+
+[dependencies]
+talon-core.workspace = true
+talon-transport.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+
+# The kernel mount layer is optional: enabling the `mount` feature pulls in
+# `fuser` and compiles the `fuser::Filesystem` adapter. Default builds (and CI
+# environments without `/dev/fuse` or libfuse) omit it entirely, so the read
+# path stays testable everywhere. `default-features = false` drops fuser's
+# libfuse C dependency (it talks to /dev/fuse directly), so `--features mount`
+# compiles without the libfuse headers installed.
+fuser = { version = "0.14", optional = true, default-features = false }
+libc = { version = "0.2", optional = true }
+
+[features]
+# Compile the kernel FUSE mount adapter (requires fuser).
+mount = ["dep:fuser", "dep:libc"]
+
+[dev-dependencies]
+divan.workspace = true
+
+[[bench]]
+name = "read_path_benches"
+harness = false
+
+[[bench]]
+name = "conn_pool_benches"
+harness = false
+

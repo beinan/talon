@@ -1,0 +1,28 @@
+# Build artifacts
+/target
+
+# mdBook rendered output (source lives in docs/book/src)
+/docs/book/book/
+
+# Benchmark run output (baselines are committed; per-run results are not)
+/bench/results/
+
+# Editor / OS
+*.swp
+.DS_Store
+
+# Secrets / credentials — never commit these.
+# The Azure SAS token and account are supplied via environment variables at
+# runtime (TALON_WORKER_AZURE_SAS / TALON_WORKER_AZURE_ACCOUNT); nothing secret
+# belongs in the tree. These patterns keep local secret files out of git.
+.env
+.env.*
+*.env
+*.sas
+*.pem
+*.key
+secrets.*
+*.secret
+*_secret*
+credentials
+credentials.*

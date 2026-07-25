@@ -1,0 +1,23 @@
+//! # talon-backend
+//!
+//! [`BackendStore`](talon_core::BackendStore) implementations for the blob
+//! stores Talon loads from on a cache miss: S3 (and S3-compatible), with GCS and
+//! Azure to follow. Each backend is generic over an [`http::HttpClient`] so
+//! request construction and response parsing are unit-testable offline; a real
+//! networked client is injected in production.
+
+pub mod azure;
+pub mod delay;
+pub mod gcs;
+pub mod http;
+pub mod reqwest_client;
+pub mod s3;
+pub mod sigv4;
+
+pub use azure::{AzureBackend, AzureConfig};
+pub use delay::{DelayConfig, DelayingHttpClient};
+pub use gcs::{GcsBackend, GcsConfig};
+pub use http::{HttpClient, HttpRequest, HttpResponse, Method};
+pub use reqwest_client::ReqwestClient;
+pub use s3::{S3Backend, S3Config, S3Credentials};
+pub use sigv4::{sign_request, AmzDate};

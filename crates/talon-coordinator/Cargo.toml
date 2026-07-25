@@ -1,0 +1,62 @@
+[package]
+name = "talon-coordinator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Cluster coordinator: metadata, membership, and object placement for Talon"
+
+[[bin]]
+name = "talon-coordinator"
+path = "src/main.rs"
+
+# Documentation generator: renders the config reference from the ConfigVar
+# schemas. Build with --features etcd,kubernetes so backend keys are included.
+[[bin]]
+name = "talon-gen-config-docs"
+path = "src/bin/gen-config-docs.rs"
+
+# Documentation generator: renders the REST API reference from openapi.json.
+[[bin]]
+name = "talon-gen-api-docs"
+path = "src/bin/gen-api-docs.rs"
+
+[features]
+state-store-testkit = []
+# Production Kubernetes Lease ClusterStateStore backend. Off by default so
+# non-Kubernetes builds do not pull in the kube/k8s-openapi client stack.
+kubernetes = ["dep:kube", "dep:k8s-openapi", "dep:futures"]
+# Production etcd v3 ClusterStateStore backend. Kept off by default so
+# non-etcd builds do not pull in the gRPC/TLS stack.
+etcd = ["dep:etcd-client", "dep:tonic"]
+
+[dependencies]
+talon-core.workspace = true
+talon-transport.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+clap.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+axum.workspace = true
+xxhash-rust.workspace = true
+kube = { workspace = true, optional = true }
+k8s-openapi = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+etcd-client = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+
+[dev-dependencies]
+divan.workspace = true
+tokio.workspace = true
+tower = { version = "0.5", features = ["util"] }
+
+[[bench]]
+name = "placement_benches"
+harness = false

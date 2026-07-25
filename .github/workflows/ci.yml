@@ -1,0 +1,300 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege default token.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail the build on any warning across the whole workspace.
+  RUSTFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D warnings"
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain (rustfmt)
+        run: rustup component add rustfmt
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain (clippy)
+        run: rustup component add clippy
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --all-features
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace --all-targets --all-features --locked
+      - name: Test
+        run: cargo test --workspace --all-features --locked
+
+  fuse-mount:
+    name: fuse mount e2e
+    runs-on: ubuntu-latest
+    # The read-path unit/integration tests never touch the kernel (they use mock
+    # TCP servers). This job mounts a real TalonFuse on /dev/fuse and reads a
+    # file back through the kernel, asserting byte-exactness end to end — the one
+    # layer only a real mount can cover. GitHub's Linux runners provide an
+    # accessible /dev/fuse; macOS and restricted sandboxes do not, which is why
+    # the test is #[ignore]d and gated behind the `mount` feature by default.
+    env:
+      # Turn a missing/unusable /dev/fuse into a hard failure here, so this job
+      # can never pass without actually exercising the kernel mount path.
+      TALON_REQUIRE_FUSE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify /dev/fuse is available
+        run: |
+          if [ ! -e /dev/fuse ]; then
+            echo "::error::/dev/fuse is missing on this runner; the FUSE mount test cannot run"
+            exit 1
+          fi
+          ls -l /dev/fuse
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+      - name: Run the real-kernel mount test
+        run: >-
+          cargo test -p talon-fuse --features mount --test mount_e2e --locked
+          -- --ignored --nocapture
+
+  docs:
+    name: doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+      - name: Build docs
+        run: cargo doc --workspace --no-deps --all-features
+
+  docs-book:
+    name: mdbook build
+    runs-on: ubuntu-latest
+    # Ensures the mdBook documentation site always builds. Deployment to GitHub
+    # Pages happens separately (docs.yml) only on merge to main.
+    env:
+      MDBOOK_VERSION: "0.4.52"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install mdBook
+        run: cargo install mdbook --version ${MDBOOK_VERSION} --locked
+      - name: Build the book
+        run: mdbook build docs/book
+
+  config-docs:
+    name: reference docs drift
+    runs-on: ubuntu-latest
+    # The configuration and REST API references are generated from the code /
+    # OpenAPI spec. Fail if a committed copy is stale so docs cannot drift.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+      - name: Configuration reference drift
+        run: |
+          cargo run -q -p talon-coordinator --features etcd,kubernetes \
+            --bin talon-gen-config-docs > /tmp/config-ref.md
+          if ! diff -u docs/reference/configuration.md /tmp/config-ref.md; then
+            echo "::error::docs/reference/configuration.md is stale; run 'just gen-config-docs'"
+            exit 1
+          fi
+      - name: REST API reference drift
+        run: |
+          cargo run -q -p talon-coordinator --bin talon-gen-api-docs > /tmp/api-ref.md
+          if ! diff -u docs/reference/rest-api.md /tmp/api-ref.md; then
+            echo "::error::docs/reference/rest-api.md is stale; run 'just gen-api-docs'"
+            exit 1
+          fi
+
+  docs-quality:
+    name: docs quality
+    runs-on: ubuntu-latest
+    # Documentation hygiene: spelling (typos) and links (lychee). Config lives
+    # in typos.toml and lychee.toml; run the same checks locally via
+    # `just spell` and `just linkcheck`.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Spell check
+        uses: crate-ci/typos@master
+      - name: Link check
+        # Offline: validate internal / relative links only. External URLs are
+        # not fetched, so a slow or rate-limited third-party site (e.g. a
+        # timeout to etcd.io) can never turn the gate red on a false negative.
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --offline --no-progress
+            README.md DESIGN.md CONTRIBUTING.md BENCHMARKS.md
+            'docs/**/*.md' '.github/**/*.md'
+          fail: true
+
+  etcd-contract:
+    name: etcd backend contract
+    runs-on: ubuntu-latest
+    # Exercises the production etcd ClusterStateStore backend against a real
+    # ephemeral etcd, as required by the state-store contract. etcd is launched
+    # explicitly rather than as a service container because that image's
+    # healthcheck is unreliable on GitHub-hosted runners.
+    env:
+      ETCD_VERSION: v3.5.16
+      TALON_ETCD_TEST_ENDPOINT: 127.0.0.1:2379
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Start ephemeral etcd
+        run: |
+          curl -fsSL -o /tmp/etcd.tar.gz \
+            "https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz"
+          tar xzf /tmp/etcd.tar.gz -C /tmp
+          ETCD_DIR="/tmp/etcd-${ETCD_VERSION}-linux-amd64"
+          "$ETCD_DIR/etcd" --data-dir /tmp/etcd-data \
+            --listen-client-urls http://127.0.0.1:2379 \
+            --advertise-client-urls http://127.0.0.1:2379 &
+          echo "ETCD_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            if "$ETCD_DIR/etcdctl" --endpoints=127.0.0.1:2379 endpoint health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "etcd did not become healthy" >&2
+          exit 1
+      - uses: Swatinem/rust-cache@v2
+      - name: Run etcd backend contract tests
+        run: >-
+          cargo test -p talon-coordinator
+          --features etcd,state-store-testkit
+          --test etcd_contract --locked
+
+  docker-build:
+    name: docker image build
+    runs-on: ubuntu-latest
+    # Smoke-build every container image on PRs (no push) so a broken Dockerfile
+    # fails CI. Publishing to GHCR happens separately on tags (release-images.yml).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate docker-compose
+        run: |
+          docker compose config --quiet
+          docker compose --profile ha config --quiet
+          # The latency lab is a standalone stack; validate it parses too.
+          docker compose -f deploy/testenv/docker-compose.yml config --quiet
+          docker compose -f deploy/testenv/docker-compose.yml --profile tools config --quiet
+      - name: Build coordinator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/coordinator.Dockerfile
+          push: false
+          cache-from: type=gha,scope=coordinator
+          cache-to: type=gha,scope=coordinator,mode=max
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/worker.Dockerfile
+          push: false
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+      - name: Build fuse image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/fuse.Dockerfile
+          push: false
+          cache-from: type=gha,scope=fuse
+          cache-to: type=gha,scope=fuse,mode=max
+
+  helm:
+    name: helm chart
+    runs-on: ubuntu-latest
+    # Lint and render the Talon chart across every state backend so a broken
+    # template or invalid values fails CI. No cluster is required — helm renders
+    # locally and we structurally validate the output.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: Lint (all backends)
+        run: |
+          for be in memory kubernetes etcd; do
+            rp=3; [ "$be" = memory ] && rp=1
+            echo "::group::lint $be"
+            helm lint deploy/helm/talon --strict \
+              --set coordinator.backend="$be" --set coordinator.replicas="$rp"
+            echo "::endgroup::"
+          done
+      - name: Render (all backends) and validate YAML
+        run: |
+          for be in memory kubernetes etcd; do
+            rp=3; [ "$be" = memory ] && rp=1
+            echo "::group::template $be"
+            helm template t deploy/helm/talon \
+              --set coordinator.backend="$be" --set coordinator.replicas="$rp" \
+              | python3 -c "import sys,yaml; list(yaml.safe_load_all(sys.stdin))"
+            echo "::endgroup::"
+          done
+      - name: Reject invalid configurations
+        run: |
+          if helm template t deploy/helm/talon --set coordinator.backend=redis >/dev/null 2>&1; then
+            echo "::error::unknown backend should have failed"; exit 1
+          fi
+          if helm template t deploy/helm/talon \
+              --set coordinator.backend=memory --set coordinator.replicas=3 >/dev/null 2>&1; then
+            echo "::error::memory backend with HA should have failed"; exit 1
+          fi
+
+  bench:
+    name: bench (informational)
+    runs-on: ubuntu-latest
+    # Never blocks a merge: shared runners are too noisy for absolute-time
+    # gating. This posts the baseline diff for visibility only.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Benchmark check vs committed baseline
+        id: bench
+        run: |
+          python3 scripts/bench.py check main --soft | tee bench-report.md
+      - name: Publish report to job summary
+        if: always()
+        run: cat bench-report.md >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/talon-core",
+    "crates/talon-coordinator",
+    "crates/talon-worker",
+    "crates/talon-fuse",
+    "crates/talon-transport",
+    "crates/talon-backend",
+    "crates/talon-client",
+    "crates/talon-observability",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/talon/talon"
+rust-version = "1.80"
+
+[workspace.dependencies]
+talon-core = { path = "crates/talon-core" }
+talon-transport = { path = "crates/talon-transport" }
+
+# Common third-party dependencies shared across crates
+anyhow = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+bytes = "1"
+async-trait = "0.1"
+bincode = "1.3"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+libc = "0.2"
+clap = { version = "4", features = ["derive"] }
+divan = "0.1"
+axum = "0.8"
+serde_yaml = "0.9"
+# Kubernetes client for the Lease-based ClusterStateStore backend (feature
+# "kubernetes"). rustls avoids a system OpenSSL build dependency. k8s-openapi is
+# pinned to a single API version per its compile-time version-feature contract.
+kube = { version = "0.97", default-features = false, features = ["client", "config", "rustls-tls", "runtime"] }
+k8s-openapi = { version = "0.23", default-features = false, features = ["v1_30"] }
+futures = "0.3"
+# etcd v3 client for the production ClusterStateStore backend. `tls-roots`
+# enables TLS via tonic/ring with the platform's native root certificates and
+# avoids a system OpenSSL build dependency.
+etcd-client = { version = "0.19", default-features = false, features = ["tls", "tls-roots"] }
+# gRPC status codes surfaced by etcd-client errors. Pinned to the same tonic
+# major the etcd client depends on so error mapping stays in sync.
+tonic = { version = "0.14", default-features = false }

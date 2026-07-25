@@ -1,0 +1,14 @@
+# Link-check configuration for the `lychee` CI gate.
+# See https://github.com/lycheeverse/lychee
+#
+# The gate runs lychee with `--offline` (see the docs-quality job in ci.yml and
+# `just linkcheck`): it validates only internal / relative links, which we
+# control, and never fetches external URLs. This keeps the gate deterministic —
+# a slow or rate-limited third-party site can't produce a false failure — while
+# still catching broken links between our own docs.
+
+# Do not check generated book output or vendored trees.
+exclude_path = [
+    "docs/book/book",
+    "target",
+]

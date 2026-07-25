@@ -1,0 +1,21 @@
+[package]
+name = "talon-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "CLI client that reads Talon cache objects via the coordinator + workers"
+
+[[bin]]
+name = "talon-client"
+path = "src/main.rs"
+
+[dependencies]
+talon-core.workspace = true
+talon-transport.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
