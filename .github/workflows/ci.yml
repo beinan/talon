@@ -73,13 +73,39 @@ jobs:
       TALON_REQUIRE_FUSE: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Verify /dev/fuse is available
+      - name: Capture FUSE environment before mounting
+        # /dev/fuse existing is necessary but not sufficient (#405). This job
+        # intermittently fails with EPERM from fusermount3 while /dev/fuse looks
+        # perfectly healthy, and the cause is not yet established.
+        #
+        # An unprivileged process mounts through the setuid fusermount3 helper,
+        # so a missing setuid bit, a restrictive /etc/fuse.conf, an AppArmor
+        # policy denying the helper, or an exhausted mount limit could each
+        # produce it. Capture all of them unconditionally so a passing and a
+        # failing run can be compared directly -- the failing capture is the
+        # evidence still missing.
+        #
+        # Note this step does not try to repair anything. An earlier version
+        # chmod'ed the setuid bit on the theory that it was missing; the first
+        # capture showed it already present, so that fix was treating a cause
+        # that had not been demonstrated.
         run: |
           if [ ! -e /dev/fuse ]; then
             echo "::error::/dev/fuse is missing on this runner; the FUSE mount test cannot run"
             exit 1
           fi
+          echo "--- identity (root would skip fusermount3 entirely) ---"
+          id
+          echo "--- /dev/fuse ---"
           ls -l /dev/fuse
+          echo "--- fusermount3 (setuid expected; observed present on a passing run) ---"
+          ls -l "$(command -v fusermount3 || echo /usr/bin/fusermount3)" || true
+          echo "--- /etc/fuse.conf ---"
+          cat /etc/fuse.conf 2>/dev/null || echo "(absent)"
+          echo "--- apparmor (a policy denying the helper is one hypothesis) ---"
+          aa-status --enabled 2>/dev/null && echo "apparmor enabled" || echo "apparmor not enabled or unavailable"
+          echo "--- current mounts (an exhausted mount_max is another) ---"
+          grep -c . /proc/self/mounts
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - uses: Swatinem/rust-cache@v2
