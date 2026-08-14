@@ -281,8 +281,11 @@ Two items that were previously listed here have since been measured (#273):
   capacity. Sharding the eviction *policy* is free; sharding the *budget* is
   not.
 
-The measured conclusion is to keep worker state **shared with lock-free reads**
-(`BlockIndex` is read-mostly), a per-ring buffer for LRU access marking, a
+The measured conclusion is to keep worker state **shared behind a single
+read-write lock** (`BlockIndex` is read-mostly, so presence and lookup take the
+shared side and only commit/remove/page updates take the exclusive side; a
+sharded map can replace it if the lock ever becomes hot), a per-ring buffer for
+LRU access marking, a
 **global** byte account for eviction, and a global `InFlightLoads` for miss
 dedup (a correctness requirement — per-shard dedup would refetch the same
 256 MiB block once per ring).
