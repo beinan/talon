@@ -61,8 +61,10 @@ Every management response carries:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY` (plus the UI's `frame-ancestors 'none'` CSP)
 - `Referrer-Policy: no-referrer`
-- `Cache-Control: no-store` on protected data (the UI asset layer sets its own
-  long-lived caching for static files only)
+- `Cache-Control: no-store` on every non-public response. Only `/healthz`,
+  `/readyz`, and `/metrics` are exempt, so UI static assets are served
+  `no-store` as well: the asset handler sets a long-lived `max-age`, but the
+  security layer runs outside it and overwrites the header.
 
 Request bodies are capped at 64 KiB (the API is read-only), and each request is
 handled under the coordinator's bounded state-store timeout.

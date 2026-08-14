@@ -153,8 +153,10 @@ pub fn apply_security_headers(resp: &mut Response, protected: bool) {
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
     );
-    // Protected (data/UI) responses must not be stored by shared caches; the UI
-    // asset layer sets its own long-lived caching and is exempt via `protected`.
+    // Protected (data/UI) responses must not be stored by shared caches. This
+    // runs as an outer layer and overwrites whatever the handler set, so UI
+    // assets get `no-store` too despite the asset handler's own `max-age`:
+    // only `is_public_path` routes keep their caching.
     if protected {
         h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
