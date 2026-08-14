@@ -351,13 +351,20 @@ dedup (a correctness requirement — per-shard dedup would refetch the same
     data-plane path.
   - **Paged virtual block:** only the hot pages within a block are materialized
     on demand. Best for point-query workloads (database lookups). Page size is
-    configurable **256KB–4MB** (per-namespace default). A 256MB block therefore
-    holds up to 1024 pages (256KB) or 64 pages (4MB). Addressed logically as
-    `block_id/page_index`.
-  - **Form is decided at LOAD time via a hint** (per-namespace or per-LOAD
-    request); e.g. checkpoint prefixes load as whole, database prefixes load as
-    paged. Dynamic promotion (paged → whole on detected sequential scan) is
-    deferred to a later version to keep the v1 state machine simple.
+    set by the worker's `l2_page_size_bytes`; a 256MB block holds up to 1024
+    pages at 256KB or 64 pages at 4MB. Addressed logically as
+    `block_id/page_index`. *As implemented*, the only constraints enforced are
+    that the page size divides `block_size` and matches `l1_page_size_bytes`
+    when L1 is enabled — 256KB–4MB is a sizing recommendation, not a validated
+    bound.
+  - **Form is chosen per worker, not per block.** *Target state:* the form is
+    decided at LOAD time via a hint (per-namespace or per-LOAD request), so
+    checkpoint prefixes load as whole and database prefixes load as paged.
+    *As implemented:* a worker is either whole-block or paged for every block it
+    caches, selected by `l2_page_size_bytes` (`0` = whole). `LoadHint` exists in
+    `talon-core` and the coordinator's load plan, but it is not carried on the
+    `Load` control message and no worker reads it. Dynamic promotion (paged →
+    whole on detected sequential scan) is likewise deferred.
   - **Page-level miss / in-flight / eviction:** for paged blocks, miss handling,
     `demand_loads_in_flight` tracking, and LRU accounting all descend to
     `(block_id, page_index)` granularity — a point query fetches only the pages
