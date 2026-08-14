@@ -66,8 +66,10 @@ Every management response carries:
   `no-store` as well: the asset handler sets a long-lived `max-age`, but the
   security layer runs outside it and overwrites the header.
 
-Request bodies are capped at 64 KiB (the API is read-only), and each request is
-handled under the coordinator's bounded state-store timeout.
+Request bodies are capped at 64 KiB (the API is read-only). Individual
+state-store calls are bounded by `request_timeout_ms` (default 3000), so
+handlers that reach the store inherit that bound; there is no separate
+per-request timeout layer on the management router.
 
 ## Secret redaction
 
