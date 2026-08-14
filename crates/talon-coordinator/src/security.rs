@@ -66,6 +66,10 @@ pub struct SecurityConfig {
     /// Authentication mode for `/api/v1` and the UI.
     pub auth: AuthMode,
     /// Whether to honor `X-Forwarded-For` from a trusted proxy for audit logs.
+    ///
+    /// Currently inert: audit logging is not implemented, so no code path reads
+    /// this field or inspects the header. Kept so the operator-facing setting
+    /// does not change shape when auditing lands.
     pub trust_forwarded_headers: bool,
 }
 

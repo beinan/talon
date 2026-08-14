@@ -78,6 +78,11 @@ in logs, the management API, metrics, or error bodies.
 Brute-force protection against the bearer token is bounded by the constant-time
 comparison plus the request-size/timeout limits; for internet-facing
 deployments, configure connection/request rate limiting at the proxy (e.g.
-nginx `limit_req`). Audit fields for a protected request are: timestamp, method,
-path, response status, and — when `trust_forwarded_headers` is on — the
-forwarded client address. The token value is never part of an audit record.
+nginx `limit_req`).
+
+Request audit logging is **not implemented**. The coordinator emits no
+per-request record of method, path, or response status, and
+`TALON_COORDINATOR_TRUST_FORWARDED` is currently inert: the value is parsed and
+stored, but nothing reads it and no `X-Forwarded-For` header is consulted. If
+you need an audit trail today, collect it at the proxy in front of the
+management port. The token value is never logged.
