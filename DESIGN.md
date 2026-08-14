@@ -423,21 +423,3 @@ block cache, custom TCP data plane, read-only FUSE, and pluggable blob backends
 Add RF=2 and a protobuf control API once miss cost and compatibility
 requirements are demonstrated. Coordinator HA follows
 [`ADR 0001`](docs/adr/0001-management-plane-ha.md).
-
-## Follow-up skeleton changes
-
-Decisions above that diverge from the current code, to be addressed in later PRs:
-
-- Replace `CacheKey(String)` with a structured, reversible key
-  (`backend + bucket/container + object_path + offset + block_size + etag/version`).
-- Add a `BackendStore` trait in `talon-core`, distinct from `ObjectStore`
-  (cache access) — S3 / GCS / Azure Blob implementations to follow.
-- Adjust `ObjectStore` for block-level, byte-accounted access and an fd/offset
-  path for `sendfile`, rather than only returning `Bytes`.
-- Model block materialization as `enum { Whole, Paged { page_size,
-  present_bitmap } }` in the block index, decided by a LOAD-time hint; add
-  page-level miss / in-flight / eviction for paged blocks.
-- Replace control-plane `serde_json` with framed `bincode`; define a data-plane
-  frame header.
-- Extend `RendezvousPlacement` to top-K + epoch.
-- Introduce layered configuration (`CLI > env > config file > default`).
